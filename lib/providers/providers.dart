@@ -6,6 +6,7 @@ import '../services/room_service.dart';
 import '../models/user_model.dart';
 import '../models/room_model.dart';
 import '../models/chat_message.dart';
+import '../models/friend_request.dart';
 
 final authServiceProvider = Provider((_) => AuthService());
 final roomServiceProvider = Provider((_) => RoomService());
@@ -32,6 +33,18 @@ final chatStreamProvider = StreamProvider.family<List<ChatMessage>, String>((ref
 
 final leaderboardProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
   return ref.read(roomServiceProvider).getLeaderboard();
+});
+
+final incomingRequestsProvider = StreamProvider.family<List<FriendRequest>, String>((ref, uid) {
+  return ref.read(roomServiceProvider).watchIncomingRequests(uid);
+});
+
+final friendsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((ref, uid) {
+  return ref.read(roomServiceProvider).watchFriends(uid);
+});
+
+final incomingChallengesProvider = StreamProvider.family<List<RoomModel>, String>((ref, uid) {
+  return ref.read(roomServiceProvider).watchIncomingChallenges(uid);
 });
 
 final themeProvider = StateProvider<bool>((ref) => false); // false = light

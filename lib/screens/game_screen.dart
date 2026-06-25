@@ -19,8 +19,8 @@ class GameScreen extends ConsumerStatefulWidget {
 class _GameScreenState extends ConsumerState<GameScreen> {
   Timer? _timer;
   bool _chatOpen = false;
-
-  static const _presetMessages = ['Good luck!', 'Nice move!', '😂', '😮', '👍', '🔥', 'Well played!', 'Nooo!'];
+  int _lastMoveCount = -1;
+  bool _navigating = false;
 
   @override
   void initState() {
@@ -54,10 +54,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       data: (room) {
         if (room == null) return const Scaffold(body: Center(child: Text('Room not found')));
 
-        if (room.isFinished) {
+        // Reset timer whenever a new move is made by either player
+        if (room.moveCount != _lastMoveCount) {
+          _lastMoveCount = room.moveCount;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _startTimer());
+        }
+
+        if (room.isFinished && !_navigating) {
+          _navigating = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _timer?.cancel();
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ResultScreen(room: room, uid: uid)));
+            if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ResultScreen(room: room, uid: uid)));
           });
         }
 

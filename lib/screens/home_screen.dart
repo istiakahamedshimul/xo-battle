@@ -7,8 +7,8 @@ import 'join_room_screen.dart';
 import 'leaderboard_screen.dart';
 import 'settings_screen.dart';
 import 'profile_screen.dart';
-import '../services/room_service.dart';
 import 'lobby_screen.dart';
+import 'friends_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -17,11 +17,42 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final userAsync = ref.watch(userProfileProvider(uid));
+    final incomingRequests = ref.watch(incomingRequestsProvider(uid));
+    final incomingChallenges = ref.watch(incomingChallengesProvider(uid));
+
+    // Show challenge dialog when a new challenge arrives
+    incomingChallenges.whenData((challenges) {
+      if (challenges.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showChallengeDialog(context, ref, challenges.first, uid);
+        });
+      }
+    });
+
+    final pendingCount = incomingRequests.maybeWhen(data: (l) => l.length, orElse: () => 0);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('XO Battle', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.people),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FriendsScreen(uid: uid))),
+              ),
+              if (pendingCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                    child: Text('$pendingCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
@@ -95,6 +126,35 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _showChallengeDialog(BuildContext context, WidgetRef ref, dynamic challenge, String uid) async {
+    // fetch challenger name
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Challenge Received!'),
+        content: const Text('A friend challenged you to a game. Accept?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Decline', style: TextStyle(color: Colors.red)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+
+    if (accepted == true && context.mounted) {
+      await ref.read(roomServiceProvider).startGame(challenge.roomId);
+      Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: challenge.roomId)));
+    } else if (context.mounted) {
+      await ref.read(roomServiceProvider).abandonRoom(challenge.roomId, uid);
+    }
+  }
+
   Future<void> _randomMatch(BuildContext context, WidgetRef ref, String uid) async {
     final roomService = ref.read(roomServiceProvider);
     final room = await roomService.joinRandomRoom(uid);
@@ -103,7 +163,6 @@ class HomeScreen extends ConsumerWidget {
         Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: room.roomId)));
       }
     } else {
-      // No room found, create one and wait
       final newRoom = await roomService.createRoom(uid);
       if (context.mounted) {
         Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: newRoom.roomId)));

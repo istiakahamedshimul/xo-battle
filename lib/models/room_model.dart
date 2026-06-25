@@ -11,6 +11,8 @@ class RoomModel {
   final String? winner;
   final String? result; // win / draw / abandoned
   final int moveCount;
+  final String? rematchRequestBy; // uid of who requested rematch
+  final String? rematchRoomId;    // new room id once both accept
 
   RoomModel({
     required this.roomId,
@@ -25,6 +27,8 @@ class RoomModel {
     this.winner,
     this.result,
     this.moveCount = 0,
+    this.rematchRequestBy,
+    this.rematchRoomId,
   });
 
   factory RoomModel.fromMap(Map<String, dynamic> map, String id) => RoomModel(
@@ -40,6 +44,8 @@ class RoomModel {
         winner: map['winner'],
         result: map['result'],
         moveCount: map['moveCount'] ?? 0,
+        rematchRequestBy: map['rematchRequestBy'],
+        rematchRoomId: map['rematchRoomId'],
       );
 
   Map<String, dynamic> toMap() => {
@@ -54,6 +60,8 @@ class RoomModel {
         'winner': winner,
         'result': result,
         'moveCount': moveCount,
+        'rematchRequestBy': rematchRequestBy,
+        'rematchRoomId': rematchRoomId,
         'updatedAt': DateTime.now().toIso8601String(),
       };
 

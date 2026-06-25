@@ -20,10 +20,12 @@ class LobbyScreen extends ConsumerWidget {
       data: (room) {
         if (room == null) return const Scaffold(body: Center(child: Text('Room not found')));
 
-        // Auto-navigate when game starts
-        if (room.isPlaying && room.guestId != null) {
+        // Both players auto-navigate when status becomes playing
+        if (room.isPlaying) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: roomId)));
+            if (context.mounted) {
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: roomId)));
+            }
           });
         }
 
@@ -67,7 +69,7 @@ class LobbyScreen extends ConsumerWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: roomId))),
+                      onPressed: () => _startGame(context, ref, roomId),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         backgroundColor: Colors.deepPurple,
@@ -84,6 +86,11 @@ class LobbyScreen extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _startGame(BuildContext context, WidgetRef ref, String roomId) async {
+    await ref.read(roomServiceProvider).startGame(roomId);
+    // navigation handled by stream listener above
   }
 
   Future<void> _leave(BuildContext context, WidgetRef ref, String roomId, String uid) async {
