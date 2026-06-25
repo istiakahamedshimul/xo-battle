@@ -67,14 +67,16 @@ class BotService {
   /// Seed all bot profiles into Firestore (call once, idempotent)
   static Future<void> seedBots() async {
     final batch = _db.batch();
+    int newBots = 0;
     for (final bot in botProfiles) {
       final ref = _db.collection('users').doc(bot.uid);
       final snap = await ref.get();
       if (!snap.exists) {
         batch.set(ref, bot.toFirestore());
+        newBots++;
       }
     }
-    await batch.commit();
+    if (newBots > 0) await batch.commit();
   }
 
   /// Pick a random bot profile

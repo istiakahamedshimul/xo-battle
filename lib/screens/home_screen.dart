@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:async';
 import '../providers/providers.dart';
 import '../services/bot_service.dart';
 import 'create_room_screen.dart';
@@ -13,22 +13,34 @@ import 'lobby_screen.dart';
 import 'friends_screen.dart';
 import 'game_screen.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _randomMatchBusy = false;
+  // Track challenge roomIds already shown to avoid repeat dialogs
+  final Set<String> _shownChallenges = {};
+
+  @override
+  Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final userAsync = ref.watch(userProfileProvider(uid));
     final incomingRequests = ref.watch(incomingRequestsProvider(uid));
     final incomingChallenges = ref.watch(incomingChallengesProvider(uid));
 
-    // Show challenge dialog when a new challenge arrives
+    // Show challenge dialog only once per challenge roomId
     incomingChallenges.whenData((challenges) {
-      if (challenges.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showChallengeDialog(context, ref, challenges.first, uid);
-        });
+      for (final challenge in challenges) {
+        if (!_shownChallenges.contains(challenge.roomId)) {
+          _shownChallenges.add(challenge.roomId);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showChallengeDialog(challenge, uid);
+          });
+        }
       }
     });
 
@@ -114,7 +126,7 @@ class HomeScreen extends ConsumerWidget {
               icon: Icons.shuffle,
               label: 'Random Match',
               color: Colors.orange,
-              onTap: () => _randomMatch(context, ref, uid),
+              onTap: _randomMatchBusy ? null : () => _randomMatch(uid),
             ),
             const SizedBox(height: 16),
             _MenuButton(
@@ -129,14 +141,29 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showChallengeDialog(BuildContext context, WidgetRef ref, dynamic challenge, String uid) async {
-    // fetch challenger name
+  Future<void> _showChallengeDialog(dynamic challenge, String uid) async {
+    if (!mounted) return;
+
+    // Fetch challenger name for the dialog
+    final challengerDoc = await ref.read(roomServiceProvider).getUserName(challenge.hostId);
+
+    if (!mounted) return;
     final accepted = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text('Challenge Received!'),
-        content: const Text('A friend challenged you to a game. Accept?'),
+        title: const Text('⚔️ Challenge Received!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$challengerDoc challenged you!',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text('Do you accept the challenge?'),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -144,103 +171,122 @@ class HomeScreen extends ConsumerWidget {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
             child: const Text('Accept'),
           ),
         ],
       ),
     );
 
-    if (accepted == true && context.mounted) {
+    if (!mounted) return;
+    if (accepted == true) {
       await ref.read(roomServiceProvider).startGame(challenge.roomId);
-      Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: challenge.roomId)));
-    } else if (context.mounted) {
+      if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: challenge.roomId)));
+    } else {
       await ref.read(roomServiceProvider).abandonRoom(challenge.roomId, uid);
     }
   }
 
-  Future<void> _randomMatch(BuildContext context, WidgetRef ref, String uid) async {
+  Future<void> _randomMatch(String uid) async {
+    if (_randomMatchBusy) return;
+    setState(() => _randomMatchBusy = true);
+
     final roomService = ref.read(roomServiceProvider);
 
-    // Try joining an existing real-player room first
-    final existing = await roomService.joinRandomRoom(uid);
-    if (existing != null) {
-      if (context.mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: existing.roomId)));
-      return;
-    }
-
-    // No room found — create one and wait up to 20s for a real opponent
-    final waitRoom = await roomService.createRoom(uid);
-    if (!context.mounted) return;
-
-    // Show a waiting dialog with countdown
-    int secondsLeft = 20;
-    Timer? countdown;
-    bool matched = false;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          countdown ??= Timer.periodic(const Duration(seconds: 1), (_) async {
-            // Check if a real player joined
-            final snap = await roomService.watchRoom(waitRoom.roomId).first;
-            if (snap != null && snap.guestId != null && snap.guestId!.isNotEmpty && !BotService.isBot(snap.guestId!)) {
-              matched = true;
-              countdown?.cancel();
-              if (ctx.mounted) Navigator.pop(ctx);
-              return;
-            }
-            if (secondsLeft <= 1) {
-              countdown?.cancel();
-              if (ctx.mounted) Navigator.pop(ctx);
-              return;
-            }
-            setDialogState(() => secondsLeft--);
-          });
-
-          return AlertDialog(
-            title: const Text('Finding Opponent...'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text('Searching for real players...', style: TextStyle(color: Colors.grey.shade600)),
-                const SizedBox(height: 8),
-                Text('$secondsLeft s', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                const SizedBox(height: 4),
-                Text('A bot will fill in if no one joins', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  countdown?.cancel();
-                  Navigator.pop(ctx);
-                  roomService.abandonRoom(waitRoom.roomId, uid);
-                },
-                child: const Text('Cancel', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    countdown?.cancel();
-    if (!context.mounted) return;
-
-    if (matched) {
-      // Real player joined — go to lobby (stream will auto-start)
-      Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: waitRoom.roomId)));
-    } else {
-      // No real player — abandon the waiting room and start vs bot directly
-      await roomService.abandonRoom(waitRoom.roomId, uid);
-      final botRoom = await roomService.createRoomVsBot(uid);
-      if (context.mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: botRoom.roomId)));
+    try {
+      // Try joining an existing real-player waiting room first
+      final existing = await roomService.joinRandomRoom(uid);
+      if (existing != null) {
+        if (mounted) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: existing.roomId)));
+        }
+        return;
       }
+
+      // No room found — create one and wait up to 20s for a real opponent
+      final waitRoom = await roomService.createRoom(uid);
+      if (!mounted) return;
+
+      int secondsLeft = 20;
+      Timer? countdown;
+      bool matched = false;
+      bool cancelled = false;
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            countdown ??= Timer.periodic(const Duration(seconds: 1), (_) async {
+              if (cancelled) return;
+
+              // Check if a real player joined
+              final snap = await roomService.watchRoom(waitRoom.roomId).first;
+              if (snap != null &&
+                  snap.guestId != null &&
+                  snap.guestId!.isNotEmpty &&
+                  !BotService.isBot(snap.guestId!)) {
+                matched = true;
+                countdown?.cancel();
+                if (ctx.mounted) Navigator.pop(ctx);
+                return;
+              }
+
+              if (secondsLeft <= 1) {
+                countdown?.cancel();
+                if (ctx.mounted) Navigator.pop(ctx);
+                return;
+              }
+              if (ctx.mounted) setDialogState(() => secondsLeft--);
+            });
+
+            return AlertDialog(
+              title: const Text('🔍 Finding Opponent...'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text('Searching for real players...', style: TextStyle(color: Colors.grey.shade600)),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$secondsLeft s',
+                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.deepPurple),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Bot will fill in if no one joins', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    cancelled = true;
+                    countdown?.cancel();
+                    Navigator.pop(ctx);
+                    roomService.abandonRoom(waitRoom.roomId, uid);
+                  },
+                  child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      countdown?.cancel();
+      if (cancelled || !mounted) return;
+
+      if (matched) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: waitRoom.roomId)));
+      } else {
+        // No real player — abandon wait room and play vs bot immediately
+        await roomService.abandonRoom(waitRoom.roomId, uid);
+        if (!mounted) return;
+        final botRoom = await roomService.createRoomVsBot(uid);
+        if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: botRoom.roomId)));
+      }
+    } finally {
+      if (mounted) setState(() => _randomMatchBusy = false);
     }
   }
 
@@ -257,7 +303,7 @@ class _MenuButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _MenuButton({required this.icon, required this.label, required this.color, required this.onTap});
 
@@ -273,6 +319,7 @@ class _MenuButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 18),
           backgroundColor: color,
           foregroundColor: Colors.white,
+          disabledBackgroundColor: color.withOpacity(0.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
       ),

@@ -393,6 +393,11 @@ class RoomService {
 
   // ── Leaderboard ────────────────────────────────────────────────────────────
 
+  Future<String> getUserName(String uid) async {
+    final doc = await _db.collection('users').doc(uid).get();
+    return doc.exists ? (doc['name'] ?? 'A player') : 'A player';
+  }
+
   Future<List<Map<String, dynamic>>> getLeaderboard() async {
     final query = await _db
         .collection('users')
