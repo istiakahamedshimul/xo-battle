@@ -4,12 +4,17 @@ import '../providers/providers.dart';
 
 class ProfileScreen extends ConsumerWidget {
   final String uid;
-  const ProfileScreen({super.key, required this.uid});
+  /// Pass the logged-in user's uid when viewing someone else's profile.
+  final String? viewerUid;
+
+  const ProfileScreen({super.key, required this.uid, this.viewerUid});
 
   static const _avatarEmojis = {
     'avatar_1': '🐶', 'avatar_2': '🐱', 'avatar_3': '🦊',
     'avatar_4': '🐸', 'avatar_5': '🐼', 'avatar_6': '🦁',
   };
+
+  bool get _isOwnProfile => viewerUid == null || viewerUid == uid;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -37,7 +42,9 @@ class ProfileScreen extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Text(user.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 Text('${user.points} points', style: TextStyle(color: Colors.grey.shade600)),
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
+                if (!_isOwnProfile) _ActionButtons(viewerUid: viewerUid!, targetUid: uid),
+                const SizedBox(height: 16),
                 _StatsGrid(user: user, winRate: winRate),
                 const SizedBox(height: 24),
                 _StatRow(label: 'Current Streak', value: '${user.currentStreak} 🔥'),
@@ -48,6 +55,82 @@ class ProfileScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+}
+
+class _ActionButtons extends ConsumerWidget {
+  final String viewerUid;
+  final String targetUid;
+
+  const _ActionButtons({required this.viewerUid, required this.targetUid});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isFriendAsync = ref.watch(isFriendProvider((viewer: viewerUid, target: targetUid)));
+    final hasPendingAsync = ref.watch(hasPendingRequestProvider((viewer: viewerUid, target: targetUid)));
+
+    return isFriendAsync.when(
+      loading: () => const SizedBox(height: 40, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+      error: (_, __) => const SizedBox(),
+      data: (isFriend) => Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (isFriend)
+            ElevatedButton.icon(
+              onPressed: () => _challenge(context, ref),
+              icon: const Icon(Icons.sports_esports, size: 16),
+              label: const Text('Challenge'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            )
+          else
+            hasPendingAsync.when(
+              loading: () => const SizedBox(),
+              error: (_, __) => const SizedBox(),
+              data: (hasPending) => hasPending
+                  ? OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.hourglass_top, size: 16),
+                      label: const Text('Request Sent'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: () => _sendRequest(context, ref),
+                      icon: const Icon(Icons.person_add, size: 16),
+                      label: const Text('Add Friend'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendRequest(BuildContext context, WidgetRef ref) async {
+    await ref.read(roomServiceProvider).sendFriendRequest(viewerUid, targetUid);
+    ref.invalidate(hasPendingRequestProvider((viewer: viewerUid, target: targetUid)));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Friend request sent!')));
+    }
+  }
+
+  Future<void> _challenge(BuildContext context, WidgetRef ref) async {
+    await ref.read(roomServiceProvider).challengeFriend(viewerUid, targetUid);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Challenge sent!')));
+    }
   }
 }
 
@@ -87,7 +170,11 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

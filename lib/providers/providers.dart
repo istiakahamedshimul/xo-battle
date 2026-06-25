@@ -47,6 +47,29 @@ final incomingChallengesProvider = StreamProvider.family<List<RoomModel>, String
   return ref.read(roomServiceProvider).watchIncomingChallenges(uid);
 });
 
+/// Returns true if [viewerUid] is already friends with [targetUid]
+final isFriendProvider = FutureProvider.family<bool, ({String viewer, String target})>((ref, ids) async {
+  final doc = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(ids.viewer)
+      .collection('friends')
+      .doc(ids.target)
+      .get();
+  return doc.exists;
+});
+
+/// Checks if a pending friend request already exists from viewer to target
+final hasPendingRequestProvider = FutureProvider.family<bool, ({String viewer, String target})>((ref, ids) async {
+  final snap = await FirebaseFirestore.instance
+      .collection('friendRequests')
+      .where('fromUid', isEqualTo: ids.viewer)
+      .where('toUid', isEqualTo: ids.target)
+      .where('status', isEqualTo: 'pending')
+      .limit(1)
+      .get();
+  return snap.docs.isNotEmpty;
+});
+
 final themeProvider = StateProvider<bool>((ref) => false); // false = light
 
 // Timer provider: seconds remaining per move
