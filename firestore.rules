@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users: only owner can write their own profile
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == uid;
+      allow update: if request.auth.uid == uid;
+    }
+
+    // Rooms
+    match /rooms/{roomId} {
+      function isRoomPlayer() {
+        return request.auth.uid == resource.data.hostId ||
+               request.auth.uid == resource.data.guestId;
+      }
+
+      function isNotFinished() {
+        return resource.data.status != 'finished';
+      }
+
+      function isCurrentTurn() {
+        return request.auth.uid == resource.data.currentTurn;
+      }
+
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+
+      // Only room players can update, game must not be finished
+      allow update: if request.auth != null &&
+                       isNotFinished() &&
+                       (
+                         // Guest joining
+                         (resource.data.status == 'waiting' && request.auth.uid == request.resource.data.guestId) ||
+                         // Player making a move (must be their turn)
+                         (resource.data.status == 'playing' && isRoomPlayer() && isCurrentTurn()) ||
+                         // Abandoning
+                         (isRoomPlayer())
+                       );
+
+      // Moves subcollection
+      match /moves/{moveId} {
+        allow read: if request.auth != null && isRoomPlayer();
+        allow create: if request.auth != null && isRoomPlayer() && isCurrentTurn();
+      }
+
+      // Chat subcollection
+      match /messages/{msgId} {
+        allow read: if request.auth != null && isRoomPlayer();
+        allow create: if request.auth != null && isRoomPlayer();
+      }
+    }
+  }
+}
