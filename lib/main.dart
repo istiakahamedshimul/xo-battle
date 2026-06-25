@@ -4,10 +4,12 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'providers/providers.dart';
 import 'screens/splash_screen.dart';
+import 'services/bot_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await BotService.seedBots(); // idempotent — only writes missing bots
   runApp(const ProviderScope(child: XOBattleApp()));
 }
 

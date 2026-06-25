@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/room_model.dart';
 import '../models/chat_message.dart';
 import '../models/friend_request.dart';
+import 'bot_service.dart';
 
 class RoomService {
   final _db = FirebaseFirestore.instance;
@@ -93,6 +94,35 @@ class RoomService {
       if (!snap.exists) return null;
       return RoomModel.fromMap(snap.data()!, snap.id);
     });
+  }
+
+  /// Creates a room with a bot as the opponent and immediately starts it.
+  Future<RoomModel> createRoomVsBot(String humanUid) async {
+    final bot = BotService.randomBot();
+    final code = _generateCode();
+    final ref = _db.collection('rooms').doc();
+    final data = {
+      'roomCode': code,
+      'hostId': humanUid,
+      'guestId': bot.uid,
+      'status': 'playing',
+      'board': List.filled(9, ''),
+      'playerX': humanUid,
+      'playerO': bot.uid,
+      'currentTurn': humanUid,
+      'winner': null,
+      'result': null,
+      'moveCount': 0,
+      'rematchRequestBy': null,
+      'rematchRoomId': null,
+      'isVsBot': true,
+      'botUid': bot.uid,
+      'createdAt': DateTime.now().toIso8601String(),
+      'updatedAt': DateTime.now().toIso8601String(),
+      'expiresAt': DateTime.now().add(const Duration(minutes: 30)).toIso8601String(),
+    };
+    await ref.set(data);
+    return RoomModel.fromMap(data, ref.id);
   }
 
   Future<void> startGame(String roomId) async {

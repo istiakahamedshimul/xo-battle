@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/providers.dart';
 import '../models/chat_message.dart';
+import '../services/bot_service.dart';
 import 'result_screen.dart';
 import 'home_screen.dart';
 
@@ -21,6 +22,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   bool _chatOpen = false;
   int _lastMoveCount = -1;
   bool _navigating = false;
+  final BotService _botService = BotService();
+  bool _botStarted = false;
 
   @override
   void initState() {
@@ -39,6 +42,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _botService.stopBotEngine();
     super.dispose();
   }
 
@@ -60,6 +64,19 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _startTimer());
         }
 
+        // Start bot engine once when room is playing vs bot
+        if (room.isVsBot && room.isPlaying && !_botStarted && room.botUid != null) {
+          _botStarted = true;
+          final botProfile = BotService.botProfiles.firstWhere(
+            (b) => b.uid == room.botUid,
+            orElse: () => BotService.botProfiles.first,
+          );
+          final botSymbol = room.playerX == room.botUid ? 'X' : 'O';
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _botService.startBotEngine(widget.roomId, room.botUid!, botSymbol, botProfile.difficulty);
+          });
+        }
+
         if (room.isFinished && !_navigating) {
           _navigating = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -76,10 +93,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           appBar: AppBar(
             title: const Text('XO Battle'),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.chat_bubble_outline),
-                onPressed: () => setState(() => _chatOpen = !_chatOpen),
-              ),
+              if (!room.isVsBot)
+                IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  onPressed: () => setState(() => _chatOpen = !_chatOpen),
+                ),
               TextButton(
                 onPressed: () => _leave(context, uid),
                 child: const Text('Leave', style: TextStyle(color: Colors.red)),
@@ -106,7 +124,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   ),
                 ),
               ),
-              if (_chatOpen) _ChatPanel(roomId: widget.roomId, uid: uid),
+              if (_chatOpen && !room.isVsBot) _ChatPanel(roomId: widget.roomId, uid: uid),
             ],
           ),
         );

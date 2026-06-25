@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 import '../providers/providers.dart';
+import '../services/bot_service.dart';
 import 'create_room_screen.dart';
 import 'join_room_screen.dart';
 import 'leaderboard_screen.dart';
@@ -9,6 +11,7 @@ import 'settings_screen.dart';
 import 'profile_screen.dart';
 import 'lobby_screen.dart';
 import 'friends_screen.dart';
+import 'game_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -157,15 +160,86 @@ class HomeScreen extends ConsumerWidget {
 
   Future<void> _randomMatch(BuildContext context, WidgetRef ref, String uid) async {
     final roomService = ref.read(roomServiceProvider);
-    final room = await roomService.joinRandomRoom(uid);
-    if (room != null) {
-      if (context.mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: room.roomId)));
-      }
+
+    // Try joining an existing real-player room first
+    final existing = await roomService.joinRandomRoom(uid);
+    if (existing != null) {
+      if (context.mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: existing.roomId)));
+      return;
+    }
+
+    // No room found — create one and wait up to 20s for a real opponent
+    final waitRoom = await roomService.createRoom(uid);
+    if (!context.mounted) return;
+
+    // Show a waiting dialog with countdown
+    int secondsLeft = 20;
+    Timer? countdown;
+    bool matched = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          countdown ??= Timer.periodic(const Duration(seconds: 1), (_) async {
+            // Check if a real player joined
+            final snap = await roomService.watchRoom(waitRoom.roomId).first;
+            if (snap != null && snap.guestId != null && snap.guestId!.isNotEmpty && !BotService.isBot(snap.guestId!)) {
+              matched = true;
+              countdown?.cancel();
+              if (ctx.mounted) Navigator.pop(ctx);
+              return;
+            }
+            if (secondsLeft <= 1) {
+              countdown?.cancel();
+              if (ctx.mounted) Navigator.pop(ctx);
+              return;
+            }
+            setDialogState(() => secondsLeft--);
+          });
+
+          return AlertDialog(
+            title: const Text('Finding Opponent...'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text('Searching for real players...', style: TextStyle(color: Colors.grey.shade600)),
+                const SizedBox(height: 8),
+                Text('$secondsLeft s', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                const SizedBox(height: 4),
+                Text('A bot will fill in if no one joins', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  countdown?.cancel();
+                  Navigator.pop(ctx);
+                  roomService.abandonRoom(waitRoom.roomId, uid);
+                },
+                child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    countdown?.cancel();
+    if (!context.mounted) return;
+
+    if (matched) {
+      // Real player joined — go to lobby (stream will auto-start)
+      Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: waitRoom.roomId)));
     } else {
-      final newRoom = await roomService.createRoom(uid);
+      // No real player — abandon the waiting room and start vs bot directly
+      await roomService.abandonRoom(waitRoom.roomId, uid);
+      final botRoom = await roomService.createRoomVsBot(uid);
       if (context.mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: newRoom.roomId)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: botRoom.roomId)));
       }
     }
   }
