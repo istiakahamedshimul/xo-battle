@@ -35,6 +35,7 @@ class RoomService {
       'moveCount': 0,
       'rematchRequestBy': null,
       'rematchRoomId': null,
+      'isRandomMatch': true,
       'createdAt': DateTime.now().toIso8601String(),
       'updatedAt': DateTime.now().toIso8601String(),
       'expiresAt': expires.toIso8601String(),
@@ -69,11 +70,13 @@ class RoomService {
     final query = await _db
         .collection('rooms')
         .where('status', isEqualTo: 'waiting')
-        .limit(5)
+        .where('isRandomMatch', isEqualTo: true)
+        .limit(10)
         .get();
 
+    // Filter in Dart: not hosted by me, no challengedBy field
     final available = query.docs
-        .where((d) => d['hostId'] != userId && (d['challengedBy'] == null))
+        .where((d) => d['hostId'] != userId)
         .toList();
     if (available.isNotEmpty) {
       final doc = available.first;
@@ -370,9 +373,16 @@ class RoomService {
         .collection('rooms')
         .where('guestId', isEqualTo: uid)
         .where('status', isEqualTo: 'waiting')
-        .where('challengedBy', isNotEqualTo: uid)
         .snapshots()
-        .map((s) => s.docs.map((d) => RoomModel.fromMap(d.data(), d.id)).toList());
+        .map((s) => s.docs
+            .where((d) {
+              final data = d.data();
+              final challengedBy = data['challengedBy'];
+              // Only show rooms where challengedBy is set and is NOT this user
+              return challengedBy != null && challengedBy != uid;
+            })
+            .map((d) => RoomModel.fromMap(d.data(), d.id))
+            .toList());
   }
 
   // ── Chat ───────────────────────────────────────────────────────────────────

@@ -5,11 +5,12 @@ import 'firebase_options.dart';
 import 'providers/providers.dart';
 import 'screens/splash_screen.dart';
 import 'services/bot_service.dart';
+import 'widgets/challenge_listener.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await BotService.seedBots(); // idempotent — only writes missing bots
+  await BotService.seedBots();
   runApp(const ProviderScope(child: XOBattleApp()));
 }
 
@@ -34,6 +35,7 @@ class XOBattleApp extends ConsumerWidget {
         useMaterial3: true,
       ),
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+      builder: (context, child) => ChallengeListener(child: child ?? const SizedBox()),
       home: const SplashScreen(),
     );
   }

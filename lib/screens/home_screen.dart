@@ -22,27 +22,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _randomMatchBusy = false;
-  // Track challenge roomIds already shown to avoid repeat dialogs
-  final Set<String> _shownChallenges = {};
 
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final userAsync = ref.watch(userProfileProvider(uid));
     final incomingRequests = ref.watch(incomingRequestsProvider(uid));
-    final incomingChallenges = ref.watch(incomingChallengesProvider(uid));
-
-    // Show challenge dialog only once per challenge roomId
-    incomingChallenges.whenData((challenges) {
-      for (final challenge in challenges) {
-        if (!_shownChallenges.contains(challenge.roomId)) {
-          _shownChallenges.add(challenge.roomId);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showChallengeDialog(challenge, uid);
-          });
-        }
-      }
-    });
 
     final pendingCount = incomingRequests.maybeWhen(data: (l) => l.length, orElse: () => 0);
 
@@ -139,52 +124,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _showChallengeDialog(dynamic challenge, String uid) async {
-    if (!mounted) return;
-
-    // Fetch challenger name for the dialog
-    final challengerDoc = await ref.read(roomServiceProvider).getUserName(challenge.hostId);
-
-    if (!mounted) return;
-    final accepted = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('⚔️ Challenge Received!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$challengerDoc challenged you!',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text('Do you accept the challenge?'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Decline', style: TextStyle(color: Colors.red)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
-            child: const Text('Accept'),
-          ),
-        ],
-      ),
-    );
-
-    if (!mounted) return;
-    if (accepted == true) {
-      await ref.read(roomServiceProvider).startGame(challenge.roomId);
-      if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: challenge.roomId)));
-    } else {
-      await ref.read(roomServiceProvider).abandonRoom(challenge.roomId, uid);
-    }
   }
 
   Future<void> _randomMatch(String uid) async {
