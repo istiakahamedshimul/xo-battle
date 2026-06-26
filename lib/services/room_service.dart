@@ -223,6 +223,14 @@ class RoomService {
     }
   }
 
+  Future<void> cancelWaitingRoom(String roomId) async {
+    await _db.collection('rooms').doc(roomId).update({
+      'status': 'finished',
+      'result': 'cancelled',
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
   // ── Rematch (mutual consent) ───────────────────────────────────────────────
 
   Future<void> requestRematch(String roomId, String requesterId) async {
@@ -318,6 +326,7 @@ class RoomService {
       'rematchRequestBy': null,
       'rematchRoomId': null,
       'challengedBy': senderUid,
+      'challengeAccepted': true,
       'createdAt': DateTime.now().toIso8601String(),
       'updatedAt': DateTime.now().toIso8601String(),
       'expiresAt': DateTime.now().add(const Duration(minutes: 30)).toIso8601String(),
@@ -326,10 +335,10 @@ class RoomService {
     return RoomModel.fromMap(data, ref.id);
   }
 
-  Future<void> challengeFriend(String myUid, String friendUid) async {
+  Future<RoomModel> challengeFriend(String myUid, String friendUid) async {
     final code = _generateCode();
     final ref = _db.collection('rooms').doc();
-    await ref.set({
+    final data = {
       'roomCode': code,
       'hostId': myUid,
       'guestId': friendUid,
@@ -344,9 +353,27 @@ class RoomService {
       'rematchRequestBy': null,
       'rematchRoomId': null,
       'challengedBy': myUid,
+      'challengeAccepted': false,
       'createdAt': DateTime.now().toIso8601String(),
       'updatedAt': DateTime.now().toIso8601String(),
       'expiresAt': DateTime.now().add(const Duration(minutes: 10)).toIso8601String(),
+    };
+    await ref.set(data);
+    return RoomModel.fromMap(data, ref.id);
+  }
+
+  Future<void> acceptChallenge(String roomId) async {
+    await _db.collection('rooms').doc(roomId).update({
+      'challengeAccepted': true,
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> declineChallenge(String roomId) async {
+    await _db.collection('rooms').doc(roomId).update({
+      'status': 'finished',
+      'result': 'declined',
+      'updatedAt': DateTime.now().toIso8601String(),
     });
   }
 
@@ -379,7 +406,8 @@ class RoomService {
               final data = d.data();
               final challengedBy = data['challengedBy'];
               // Only show rooms where challengedBy is set and is NOT this user
-              return challengedBy != null && challengedBy != uid;
+              final accepted = data['challengeAccepted'] == true;
+              return challengedBy != null && challengedBy != uid && !accepted;
             })
             .map((d) => RoomModel.fromMap(d.data(), d.id))
             .toList());

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../navigation.dart';
 import '../providers/providers.dart';
 import '../models/room_model.dart';
-import '../screens/game_screen.dart';
+import '../screens/lobby_screen.dart';
 
 class ChallengeListener extends ConsumerStatefulWidget {
   final Widget child;
@@ -38,8 +39,12 @@ class _ChallengeListenerState extends ConsumerState<ChallengeListener> {
   }
 
   Future<void> _showDialog(RoomModel challenge, String uid) async {
+    final navigator = rootNavigatorKey.currentState;
+    final dialogContext = navigator?.context;
+    if (dialogContext == null) return;
+
     final accepted = await showDialog<bool>(
-      context: context,
+      context: dialogContext,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('⚔️ Challenge Received!'),
@@ -76,10 +81,10 @@ class _ChallengeListenerState extends ConsumerState<ChallengeListener> {
 
     if (!mounted) return;
     if (accepted == true) {
-      await ref.read(roomServiceProvider).startGame(challenge.roomId);
-      if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: challenge.roomId)));
+      await ref.read(roomServiceProvider).acceptChallenge(challenge.roomId);
+      rootNavigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => LobbyScreen(roomId: challenge.roomId)));
     } else {
-      await ref.read(roomServiceProvider).abandonRoom(challenge.roomId, uid);
+      await ref.read(roomServiceProvider).declineChallenge(challenge.roomId);
     }
   }
 }

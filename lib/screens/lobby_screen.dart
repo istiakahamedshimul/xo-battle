@@ -31,6 +31,8 @@ class LobbyScreen extends ConsumerWidget {
 
         final isHost = room.hostId == uid;
         final hasGuest = room.guestId != null && room.guestId!.isNotEmpty;
+        final isChallengePending = room.isChallenge && !room.challengeAccepted;
+        final canStart = isHost && hasGuest && !isChallengePending && room.isWaiting;
 
         return Scaffold(
           appBar: AppBar(
@@ -65,7 +67,17 @@ class LobbyScreen extends ConsumerWidget {
                       Text('Waiting for opponent...', style: TextStyle(fontSize: 16)),
                     ],
                   ),
-                if (isHost && hasGuest)
+                if (isChallengePending)
+                  Text(
+                    isHost ? 'Waiting for friend to accept...' : 'Challenge pending...',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                if (room.isFinished)
+                  Text(
+                    room.result == 'declined' ? 'Challenge declined' : 'Room closed',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                if (canStart)
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(

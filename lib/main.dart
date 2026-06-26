@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'navigation.dart';
 import 'providers/providers.dart';
 import 'screens/splash_screen.dart';
 import 'services/bot_service.dart';
@@ -22,6 +23,7 @@ class XOBattleApp extends ConsumerWidget {
     final isDark = ref.watch(themeProvider);
 
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'XO Battle',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

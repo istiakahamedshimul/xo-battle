@@ -146,34 +146,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
       int secondsLeft = 20;
       Timer? countdown;
+      StreamSubscription? roomSub;
       bool cancelled = false;
       bool navigated = false;
 
       // ignore: use_build_context_synchronously
-      showDialog(
+      await showDialog(
         context: context,
         barrierDismissible: false,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) {
-            countdown ??= Timer.periodic(const Duration(seconds: 1), (_) async {
+            roomSub ??= roomService.watchRoom(waitRoom.roomId).listen((snap) {
               if (cancelled || navigated) return;
-
-              // Check if a real player joined via Firestore stream
-              final snap = await roomService.watchRoom(waitRoom.roomId).first;
               if (snap != null &&
                   snap.guestId != null &&
                   snap.guestId!.isNotEmpty &&
                   !BotService.isBot(snap.guestId!)) {
                 navigated = true;
                 countdown?.cancel();
-                if (ctx.mounted) Navigator.pop(ctx); // close dialog
-                // Both host and guest go to lobby — stream will show Start button
-                if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: waitRoom.roomId)));
-                return;
+                roomSub?.cancel();
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: waitRoom.roomId)));
+                }
               }
+            });
+
+            countdown ??= Timer.periodic(const Duration(seconds: 1), (_) async {
+              if (cancelled || navigated) return;
 
               if (secondsLeft <= 1) {
                 countdown?.cancel();
+                roomSub?.cancel();
                 if (ctx.mounted) Navigator.pop(ctx);
                 return;
               }
@@ -202,8 +206,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onPressed: () {
                     cancelled = true;
                     countdown?.cancel();
+                    roomSub?.cancel();
                     Navigator.pop(ctx);
-                    roomService.abandonRoom(waitRoom.roomId, uid);
+                    roomService.cancelWaitingRoom(waitRoom.roomId);
                   },
                   child: const Text('Cancel', style: TextStyle(color: Colors.red)),
                 ),
@@ -214,8 +219,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ).then((_) async {
         // Dialog closed — if not navigated and not cancelled, go to bot
         countdown?.cancel();
+        await roomSub?.cancel();
         if (navigated || cancelled || !mounted) return;
-        await roomService.abandonRoom(waitRoom.roomId, uid);
+        await roomService.cancelWaitingRoom(waitRoom.roomId);
         if (!mounted) return;
         final botRoom = await roomService.createRoomVsBot(uid);
         if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: botRoom.roomId)));

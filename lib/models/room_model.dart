@@ -15,6 +15,8 @@ class RoomModel {
   final String? rematchRoomId;
   final bool isVsBot;
   final String? botUid;
+  final String? challengedBy;
+  final bool challengeAccepted;
 
   RoomModel({
     required this.roomId,
@@ -33,6 +35,8 @@ class RoomModel {
     this.rematchRoomId,
     this.isVsBot = false,
     this.botUid,
+    this.challengedBy,
+    this.challengeAccepted = false,
   });
 
   factory RoomModel.fromMap(Map<String, dynamic> map, String id) => RoomModel(
@@ -52,6 +56,8 @@ class RoomModel {
         rematchRoomId: map['rematchRoomId'],
         isVsBot: map['isVsBot'] ?? false,
         botUid: map['botUid'],
+        challengedBy: map['challengedBy'],
+        challengeAccepted: map['challengeAccepted'] ?? false,
       );
 
   Map<String, dynamic> toMap() => {
@@ -70,10 +76,13 @@ class RoomModel {
         'rematchRoomId': rematchRoomId,
         'isVsBot': isVsBot,
         'botUid': botUid,
+        'challengedBy': challengedBy,
+        'challengeAccepted': challengeAccepted,
         'updatedAt': DateTime.now().toIso8601String(),
       };
 
   bool get isWaiting => status == 'waiting';
   bool get isPlaying => status == 'playing';
   bool get isFinished => status == 'finished';
+  bool get isChallenge => challengedBy != null && challengedBy!.isNotEmpty;
 }

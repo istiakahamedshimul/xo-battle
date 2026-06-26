@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
+import 'lobby_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   final String uid;
@@ -127,9 +128,12 @@ class _ActionButtons extends ConsumerWidget {
   }
 
   Future<void> _challenge(BuildContext context, WidgetRef ref) async {
-    await ref.read(roomServiceProvider).challengeFriend(viewerUid, targetUid);
+    final myUid = viewerUid;
+    if (myUid == null) return;
+    final room = await ref.read(roomServiceProvider).challengeFriend(myUid, targetUid);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Challenge sent!')));
+      Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: room.roomId)));
     }
   }
 }

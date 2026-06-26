@@ -258,9 +258,10 @@ class _SearchResultTile extends ConsumerWidget {
   }
 
   Future<void> _challenge(BuildContext context, WidgetRef ref, String targetUid) async {
-    await ref.read(roomServiceProvider).challengeFriend(myUid, targetUid);
+    final room = await ref.read(roomServiceProvider).challengeFriend(myUid, targetUid);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Challenge sent!')));
+      Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: room.roomId)));
     }
   }
 }
@@ -302,9 +303,10 @@ class _FriendTile extends ConsumerWidget {
   }
 
   Future<void> _challenge(BuildContext context, WidgetRef ref) async {
-    await ref.read(roomServiceProvider).challengeFriend(myUid, friendUid);
+    final room = await ref.read(roomServiceProvider).challengeFriend(myUid, friendUid);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Challenge sent!')));
+      Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: room.roomId)));
     }
   }
 }
