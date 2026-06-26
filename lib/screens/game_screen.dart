@@ -186,7 +186,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
     if (confirm == true) {
       await ref.read(roomServiceProvider).abandonRoom(widget.roomId, uid);
-      if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
+      if (context.mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
     }
   }
 }

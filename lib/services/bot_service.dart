@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Difficulty levels that map to minimax depth / randomness
+/// Difficulty labels for bot profiles. Gameplay uses perfect play for every bot.
 enum BotDifficulty { easy, medium, hard }
 
 class BotProfile {
@@ -89,31 +89,7 @@ class BotService {
   /// Returns the best cell index for the bot to play.
   static int getBotMove(List<String> board, String botSymbol, BotDifficulty difficulty) {
     final humanSymbol = botSymbol == 'X' ? 'O' : 'X';
-
-    // Easy: 60% random, 40% smart
-    if (difficulty == BotDifficulty.easy) {
-      if (_rng.nextDouble() < 0.6) return _randomMove(board);
-    }
-
-    // Medium: always block/win but doesn't plan ahead beyond 1 move
-    if (difficulty == BotDifficulty.medium) {
-      // Win if possible
-      final win = _findWinningMove(board, botSymbol);
-      if (win != null) return win;
-      // Block opponent
-      final block = _findWinningMove(board, humanSymbol);
-      if (block != null) return block;
-      // 40% random otherwise
-      if (_rng.nextDouble() < 0.4) return _randomMove(board);
-    }
-
-    // Hard: full minimax — unbeatable
-    return _minimaxBestMove(board, botSymbol, humanSymbol);
-  }
-
-  static int _randomMove(List<String> board) {
-    final empty = [for (int i = 0; i < 9; i++) if (board[i].isEmpty) i];
-    return empty[_rng.nextInt(empty.length)];
+    return _negamaxBestMove(board, botSymbol, humanSymbol);
   }
 
   static int? _findWinningMove(List<String> board, String symbol) {
@@ -125,53 +101,84 @@ class BotService {
     return null;
   }
 
-  static int _minimaxBestMove(List<String> board, String botSymbol, String humanSymbol) {
+  static int _negamaxBestMove(List<String> board, String botSymbol, String humanSymbol) {
+    final availableMoves = _orderedEmptyCells(board);
+    if (availableMoves.isEmpty) return -1;
+
+    final winningMove = _findWinningMove(board, botSymbol);
+    if (winningMove != null) return winningMove;
+
+    final blockingMove = _findWinningMove(board, humanSymbol);
+    if (blockingMove != null) return blockingMove;
+
     int bestScore = -1000;
-    int bestMove = -1;
-    // Prefer center if empty
-    if (board[4].isEmpty) return 4;
-    for (int i = 0; i < 9; i++) {
-      if (board[i].isNotEmpty) continue;
+    final bestMoves = <int>[];
+    for (final i in availableMoves) {
       final copy = List<String>.from(board)..[i] = botSymbol;
-      final score = _minimax(copy, 0, false, botSymbol, humanSymbol, -1000, 1000);
+      final score = -_negamax(
+        copy,
+        currentSymbol: humanSymbol,
+        botSymbol: botSymbol,
+        humanSymbol: humanSymbol,
+        depth: 1,
+        alpha: -1000,
+        beta: 1000,
+      );
       if (score > bestScore) {
         bestScore = score;
-        bestMove = i;
+        bestMoves
+          ..clear()
+          ..add(i);
+      } else if (score == bestScore) {
+        bestMoves.add(i);
       }
     }
-    return bestMove;
+    return bestMoves[_rng.nextInt(bestMoves.length)];
   }
 
-  static int _minimax(List<String> board, int depth, bool isMaximizing,
-      String botSymbol, String humanSymbol, int alpha, int beta) {
+  static int _negamax(
+    List<String> board, {
+    required String currentSymbol,
+    required String botSymbol,
+    required String humanSymbol,
+    required int depth,
+    required int alpha,
+    required int beta,
+  }) {
     final winner = _checkWinner(board);
-    if (winner == botSymbol) return 10 - depth;
-    if (winner == humanSymbol) return depth - 10;
+    if (winner != null) {
+      final winnerScore = winner == botSymbol ? 10 - depth : depth - 10;
+      return currentSymbol == botSymbol ? winnerScore : -winnerScore;
+    }
     if (!board.contains('')) return 0;
 
-    if (isMaximizing) {
-      int best = -1000;
-      for (int i = 0; i < 9; i++) {
-        if (board[i].isNotEmpty) continue;
-        board[i] = botSymbol;
-        best = max(best, _minimax(board, depth + 1, false, botSymbol, humanSymbol, alpha, beta));
-        board[i] = '';
-        alpha = max(alpha, best);
-        if (beta <= alpha) break;
-      }
-      return best;
-    } else {
-      int best = 1000;
-      for (int i = 0; i < 9; i++) {
-        if (board[i].isNotEmpty) continue;
-        board[i] = humanSymbol;
-        best = min(best, _minimax(board, depth + 1, true, botSymbol, humanSymbol, alpha, beta));
-        board[i] = '';
-        beta = min(beta, best);
-        if (beta <= alpha) break;
-      }
-      return best;
+    final nextSymbol = currentSymbol == botSymbol ? humanSymbol : botSymbol;
+    var best = -1000;
+    var localAlpha = alpha;
+
+    for (final i in _orderedEmptyCells(board)) {
+      board[i] = currentSymbol;
+      final score = -_negamax(
+        board,
+        currentSymbol: nextSymbol,
+        botSymbol: botSymbol,
+        humanSymbol: humanSymbol,
+        depth: depth + 1,
+        alpha: -beta,
+        beta: -localAlpha,
+      );
+      board[i] = '';
+
+      best = max(best, score);
+      localAlpha = max(localAlpha, score);
+      if (localAlpha >= beta) break;
     }
+    return best;
+  }
+
+  static List<int> _orderedEmptyCells(List<String> board) {
+    const preferredOrder = [4, 0, 2, 6, 8, 1, 3, 5, 7];
+    return [for (final i in preferredOrder) if (board[i].isEmpty) i];
   }
 
   static String? _checkWinner(List<String> board) {
@@ -206,7 +213,6 @@ class BotService {
       final board = List<String>.from(data['board']);
       if (!board.contains('')) return;
 
-      final move = getBotMove(board, botSymbol, difficulty);
       final humanUid = botUid == data['playerX'] ? data['playerO'] : data['playerX'];
 
       // Human-like delay: 0.8s–2.2s
@@ -221,6 +227,8 @@ class BotService {
       if (freshData['currentTurn'] != botUid) return;
 
       final freshBoard = List<String>.from(freshData['board']);
+      final move = getBotMove(freshBoard, botSymbol, difficulty);
+      if (move < 0) return;
       if (freshBoard[move].isNotEmpty) return;
       freshBoard[move] = botSymbol;
 
