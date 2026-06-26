@@ -136,9 +136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // Try joining an existing real-player waiting room first
       final existing = await roomService.joinRandomRoom(uid);
       if (existing != null) {
-        if (mounted) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: existing.roomId)));
-        }
+        if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: existing.roomId)));
         return;
       }
 
@@ -148,26 +146,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
       int secondsLeft = 20;
       Timer? countdown;
-      bool matched = false;
       bool cancelled = false;
+      bool navigated = false;
 
-      await showDialog(
+      // ignore: use_build_context_synchronously
+      showDialog(
         context: context,
         barrierDismissible: false,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) {
             countdown ??= Timer.periodic(const Duration(seconds: 1), (_) async {
-              if (cancelled) return;
+              if (cancelled || navigated) return;
 
-              // Check if a real player joined
+              // Check if a real player joined via Firestore stream
               final snap = await roomService.watchRoom(waitRoom.roomId).first;
               if (snap != null &&
                   snap.guestId != null &&
                   snap.guestId!.isNotEmpty &&
                   !BotService.isBot(snap.guestId!)) {
-                matched = true;
+                navigated = true;
                 countdown?.cancel();
-                if (ctx.mounted) Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx); // close dialog
+                // Both host and guest go to lobby — stream will show Start button
+                if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: waitRoom.roomId)));
                 return;
               }
 
@@ -210,20 +211,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             );
           },
         ),
-      );
-
-      countdown?.cancel();
-      if (cancelled || !mounted) return;
-
-      if (matched) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: waitRoom.roomId)));
-      } else {
-        // No real player — abandon wait room and play vs bot immediately
+      ).then((_) async {
+        // Dialog closed — if not navigated and not cancelled, go to bot
+        countdown?.cancel();
+        if (navigated || cancelled || !mounted) return;
         await roomService.abandonRoom(waitRoom.roomId, uid);
         if (!mounted) return;
         final botRoom = await roomService.createRoomVsBot(uid);
         if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: botRoom.roomId)));
-      }
+      });
     } finally {
       if (mounted) setState(() => _randomMatchBusy = false);
     }

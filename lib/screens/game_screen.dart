@@ -19,11 +19,14 @@ class GameScreen extends ConsumerStatefulWidget {
 
 class _GameScreenState extends ConsumerState<GameScreen> {
   Timer? _timer;
-  bool _chatOpen = false;
   int _lastMoveCount = -1;
   bool _navigating = false;
   final BotService _botService = BotService();
   bool _botStarted = false;
+
+  // Chat overlay
+  final List<_OverlayMsg> _overlayMsgs = [];
+  String? _lastSeenMsgId;
 
   @override
   void initState() {
@@ -46,6 +49,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     super.dispose();
   }
 
+  void _onNewMessage(ChatMessage msg) {
+    final id = '${msg.senderId}_${msg.createdAt.millisecondsSinceEpoch}';
+    if (id == _lastSeenMsgId) return;
+    _lastSeenMsgId = id;
+    final overlay = _OverlayMsg(message: msg);
+    setState(() => _overlayMsgs.add(overlay));
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _overlayMsgs.remove(overlay));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -58,13 +72,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       data: (room) {
         if (room == null) return const Scaffold(body: Center(child: Text('Room not found')));
 
-        // Reset timer whenever a new move is made by either player
         if (room.moveCount != _lastMoveCount) {
           _lastMoveCount = room.moveCount;
           WidgetsBinding.instance.addPostFrameCallback((_) => _startTimer());
         }
 
-        // Start bot engine once when room is playing vs bot
         if (room.isVsBot && room.isPlaying && !_botStarted && room.botUid != null) {
           _botStarted = true;
           final botProfile = BotService.botProfiles.firstWhere(
@@ -93,38 +105,58 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           appBar: AppBar(
             title: const Text('XO Battle'),
             actions: [
-              if (!room.isVsBot)
-                IconButton(
-                  icon: const Icon(Icons.chat_bubble_outline),
-                  onPressed: () => setState(() => _chatOpen = !_chatOpen),
-                ),
               TextButton(
                 onPressed: () => _leave(context, uid),
                 child: const Text('Leave', style: TextStyle(color: Colors.red)),
               ),
             ],
           ),
-          body: Column(
+          body: Stack(
             children: [
-              _ScoreBar(uid: uid, opponentId: opponentId, isMyTurn: isMyTurn, mySymbol: mySymbol, timeLeft: timeLeft),
-              const Divider(height: 1),
-              Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: _Board(
-                        board: room.board,
-                        onTap: isMyTurn
-                            ? (i) => _makeMove(i, uid, mySymbol, room.currentTurn == room.playerX ? room.playerO : room.playerX, room.board)
-                            : null,
+              // Main game column
+              Column(
+                children: [
+                  _ScoreBar(uid: uid, opponentId: opponentId, isMyTurn: isMyTurn, mySymbol: mySymbol, timeLeft: timeLeft),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: _Board(
+                            board: room.board,
+                            onTap: isMyTurn
+                                ? (i) => _makeMove(i, uid, mySymbol,
+                                    room.currentTurn == room.playerX ? room.playerO : room.playerX,
+                                    room.board)
+                                : null,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  // Chat quick-send bar (only for real players)
+                  if (!room.isVsBot)
+                    _ChatBar(
+                      roomId: widget.roomId,
+                      uid: uid,
+                      onNewMessage: _onNewMessage,
+                    ),
+                ],
               ),
-              if (_chatOpen && !room.isVsBot) _ChatPanel(roomId: widget.roomId, uid: uid),
+              // Floating message overlay
+              if (_overlayMsgs.isNotEmpty)
+                Positioned(
+                  top: 80,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Column(
+                      children: _overlayMsgs.map((m) => _FloatingBubble(msg: m, myUid: uid)).toList(),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -158,17 +190,163 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 }
 
+// ── Chat bar ────────────────────────────────────────────────────────────────
+
+class _ChatBar extends ConsumerStatefulWidget {
+  final String roomId;
+  final String uid;
+  final void Function(ChatMessage) onNewMessage;
+  const _ChatBar({required this.roomId, required this.uid, required this.onNewMessage});
+
+  @override
+  ConsumerState<_ChatBar> createState() => _ChatBarState();
+}
+
+class _ChatBarState extends ConsumerState<_ChatBar> {
+  static const _presets = ['👍', '🔥', '😂', '😮', 'GG!', 'Nooo!', 'Nice!', 'Lucky!'];
+  String? _lastId;
+
+  @override
+  Widget build(BuildContext context) {
+    // Listen for incoming messages to trigger overlay
+    ref.listen(chatStreamProvider(widget.roomId), (_, next) {
+      next.whenData((msgs) {
+        if (msgs.isEmpty) return;
+        final latest = msgs.last;
+        final id = '${latest.senderId}_${latest.createdAt.millisecondsSinceEpoch}';
+        if (id != _lastId && latest.senderId != widget.uid) {
+          _lastId = id;
+          widget.onNewMessage(latest);
+        }
+      });
+    });
+
+    return Container(
+      color: Colors.grey.shade100,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: _presets.map((p) => Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ActionChip(
+              label: Text(p, style: const TextStyle(fontSize: 16)),
+              onPressed: () => _send(p),
+              backgroundColor: Colors.deepPurple.shade50,
+            ),
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _send(String msg) async {
+    final chat = ChatMessage(
+      senderId: widget.uid,
+      message: msg,
+      type: RegExp(r'[\u{1F300}-\u{1FFFF}]', unicode: true).hasMatch(msg) ? 'emoji' : 'text',
+      createdAt: DateTime.now(),
+    );
+    await ref.read(roomServiceProvider).sendMessage(widget.roomId, chat);
+    // Show own message in overlay too
+    widget.onNewMessage(chat);
+  }
+}
+
+// ── Floating bubble overlay ──────────────────────────────────────────────────
+
+class _OverlayMsg {
+  final ChatMessage message;
+  _OverlayMsg({required this.message});
+}
+
+class _FloatingBubble extends StatefulWidget {
+  final _OverlayMsg msg;
+  final String myUid;
+  const _FloatingBubble({required this.msg, required this.myUid});
+
+  @override
+  State<_FloatingBubble> createState() => _FloatingBubbleState();
+}
+
+class _FloatingBubbleState extends State<_FloatingBubble> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0, -0.3), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _ctrl.forward();
+
+    // Start fade out after 2.2s
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) _ctrl.reverse();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMe = widget.msg.message.senderId == widget.myUid;
+    final color = isMe ? Colors.deepPurple : Colors.teal;
+
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(
+        position: _slide,
+        child: Align(
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            margin: EdgeInsets.only(
+              left: isMe ? 60 : 16,
+              right: isMe ? 16 : 60,
+              bottom: 6,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.92),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isMe ? 16 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 16),
+              ),
+              boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))],
+            ),
+            child: Text(
+              widget.msg.message.message,
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Board ────────────────────────────────────────────────────────────────────
+
 class _Board extends StatelessWidget {
   final List<String> board;
   final void Function(int)? onTap;
-
   const _Board({required this.board, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
       itemCount: 9,
       itemBuilder: (_, i) {
         final cell = board[i];
@@ -177,7 +355,9 @@ class _Board extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              color: cell.isEmpty ? Colors.grey.shade100 : (cell == 'X' ? Colors.deepPurple.shade50 : Colors.teal.shade50),
+              color: cell.isEmpty
+                  ? Colors.grey.shade100
+                  : (cell == 'X' ? Colors.deepPurple.shade50 : Colors.teal.shade50),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.grey.shade300, width: 2),
             ),
@@ -202,6 +382,8 @@ class _Board extends StatelessWidget {
   }
 }
 
+// ── Score bar ────────────────────────────────────────────────────────────────
+
 class _ScoreBar extends ConsumerWidget {
   final String uid;
   final String opponentId;
@@ -224,8 +406,13 @@ class _ScoreBar extends ConsumerWidget {
           const Spacer(),
           Column(
             children: [
-              Text('$timeLeft', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: timeLeft <= 5 ? Colors.red : Colors.black)),
-              Text(isMyTurn ? 'Your turn' : 'Wait...', style: TextStyle(fontSize: 12, color: isMyTurn ? Colors.green : Colors.grey)),
+              Text('$timeLeft',
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: timeLeft <= 5 ? Colors.red : Colors.black)),
+              Text(isMyTurn ? 'Your turn' : 'Wait...',
+                  style: TextStyle(fontSize: 12, color: isMyTurn ? Colors.green : Colors.grey)),
             ],
           ),
           const Spacer(),
@@ -240,7 +427,6 @@ class _PlayerChip extends ConsumerWidget {
   final AsyncValue userAsync;
   final String symbol;
   final bool active;
-
   const _PlayerChip({required this.userAsync, required this.symbol, required this.active});
 
   @override
@@ -261,80 +447,6 @@ class _PlayerChip extends ConsumerWidget {
             data: (u) => Text((u as dynamic)?.name ?? 'Player', style: const TextStyle(fontSize: 12)),
             loading: () => const Text('...'),
             error: (_, __) => const Text('Player'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChatPanel extends ConsumerStatefulWidget {
-  final String roomId;
-  final String uid;
-  const _ChatPanel({required this.roomId, required this.uid});
-
-  @override
-  ConsumerState<_ChatPanel> createState() => _ChatPanelState();
-}
-
-class _ChatPanelState extends ConsumerState<_ChatPanel> {
-  static const _presets = ['Good luck!', 'Nice move!', '😂', '😮', '👍', '🔥', 'Well played!', 'Nooo!'];
-
-  Future<void> _send(String msg) async {
-    final chat = ChatMessage(senderId: widget.uid, message: msg, type: msg.length <= 2 ? 'emoji' : 'text', createdAt: DateTime.now());
-    await ref.read(roomServiceProvider).sendMessage(widget.roomId, chat);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final chats = ref.watch(chatStreamProvider(widget.roomId));
-
-    return Container(
-      height: 200,
-      color: Colors.grey.shade50,
-      child: Column(
-        children: [
-          SizedBox(
-            height: 120,
-            child: chats.when(
-              data: (msgs) => ListView.builder(
-                reverse: true,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                itemCount: msgs.length,
-                itemBuilder: (_, i) {
-                  final m = msgs[msgs.length - 1 - i];
-                  final isMe = m.senderId == widget.uid;
-                  return Align(
-                    alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 2),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isMe ? Colors.deepPurple.shade100 : Colors.teal.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(m.message),
-                    ),
-                  );
-                },
-              ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const SizedBox(),
-            ),
-          ),
-          const Divider(height: 1),
-          SizedBox(
-            height: 52,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              children: _presets
-                  .map((p) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ActionChip(label: Text(p), onPressed: () => _send(p)),
-                      ))
-                  .toList(),
-            ),
           ),
         ],
       ),

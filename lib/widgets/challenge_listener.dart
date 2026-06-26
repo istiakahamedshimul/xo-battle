@@ -5,8 +5,6 @@ import '../providers/providers.dart';
 import '../models/room_model.dart';
 import '../screens/game_screen.dart';
 
-/// Wraps the entire app and listens for incoming challenges globally.
-/// Shows the challenge dialog instantly no matter what screen the user is on.
 class ChallengeListener extends ConsumerStatefulWidget {
   final Widget child;
   const ChallengeListener({super.key, required this.child});
@@ -16,57 +14,48 @@ class ChallengeListener extends ConsumerStatefulWidget {
 }
 
 class _ChallengeListenerState extends ConsumerState<ChallengeListener> {
-  final Set<String> _shownChallenges = {};
-  bool _dialogVisible = false;
+  final Set<String> _shown = {};
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return widget.child;
 
-    final challenges = ref.watch(incomingChallengesProvider(user.uid));
-
-    challenges.whenData((list) {
-      for (final challenge in list) {
-        if (!_shownChallenges.contains(challenge.roomId)) {
-          _shownChallenges.add(challenge.roomId);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && !_dialogVisible) {
-              _showDialog(challenge, user.uid);
-            }
-          });
+    ref.listen(incomingChallengesProvider(user.uid), (_, next) {
+      next.whenData((list) {
+        for (final challenge in list) {
+          if (!_shown.contains(challenge.roomId)) {
+            _shown.add(challenge.roomId);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showDialog(challenge, user.uid);
+            });
+          }
         }
-      }
+      });
     });
 
     return widget.child;
   }
 
   Future<void> _showDialog(RoomModel challenge, String uid) async {
-    _dialogVisible = true;
-
-    final challengerName = await ref.read(roomServiceProvider).getUserName(challenge.hostId);
-    if (!mounted) {
-      _dialogVisible = false;
-      return;
-    }
-
-    final ctx = context;
     final accepted = await showDialog<bool>(
-      context: ctx,
+      context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('⚔️ Challenge Received!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$challengerName challenged you!',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text('Do you accept?'),
-          ],
+        content: FutureBuilder<String>(
+          future: ref.read(roomServiceProvider).getUserName(challenge.hostId),
+          builder: (_, snap) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${snap.data ?? '...'} challenged you!',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text('Do you accept?'),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -85,14 +74,10 @@ class _ChallengeListenerState extends ConsumerState<ChallengeListener> {
       ),
     );
 
-    _dialogVisible = false;
     if (!mounted) return;
-
     if (accepted == true) {
       await ref.read(roomServiceProvider).startGame(challenge.roomId);
-      if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: challenge.roomId)));
-      }
+      if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => GameScreen(roomId: challenge.roomId)));
     } else {
       await ref.read(roomServiceProvider).abandonRoom(challenge.roomId, uid);
     }
