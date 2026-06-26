@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/providers.dart';
+import '../widgets/game_ui.dart';
 import 'lobby_screen.dart';
 
 class JoinRoomScreen extends ConsumerStatefulWidget {
@@ -22,7 +23,10 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
       setState(() => _error = 'Enter a valid 6-character code');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final room = await ref.read(roomServiceProvider).joinRoomByCode(code, uid);
@@ -46,14 +50,17 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GameShell(
       appBar: AppBar(title: const Text('Join Room')),
-      body: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      child: Center(
+        child: GamePanel(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.login, size: 60, color: Colors.teal),
+            const Icon(Icons.login, size: 54, color: GameColors.cyan),
+            const SizedBox(height: 12),
+            const Text('Enter the arena', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 24),
             TextField(
               controller: _controller,
@@ -63,29 +70,24 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
                 labelText: 'Room Code',
                 hintText: 'Enter 6-character code',
                 errorText: _error,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 prefixIcon: const Icon(Icons.tag),
               ),
               style: const TextStyle(fontSize: 22, letterSpacing: 6, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _join,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Colors.teal,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _loading
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Join Room', style: TextStyle(fontSize: 16)),
-              ),
+            GameButton(
+              icon: Icons.sports_esports,
+              label: 'Join Room',
+              color: GameColors.cyan,
+              onPressed: _loading ? null : _join,
+              trailing: _loading
+                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : null,
             ),
           ],
         ),
+      ),
       ),
     );
   }

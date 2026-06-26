@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/room_model.dart';
 import '../providers/providers.dart';
+import '../widgets/game_ui.dart';
 import 'home_screen.dart';
 import 'lobby_screen.dart';
 
@@ -85,22 +86,22 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     final iRequested = room.rematchRequestBy == widget.uid;
     final opponentRequested = room.rematchRequestBy != null && room.rematchRequestBy != widget.uid;
 
-    return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
+    return GameShell(
+      child: Center(
+        child: GamePanel(
+          padding: const EdgeInsets.all(26),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 80)),
+              Text(emoji, style: const TextStyle(fontSize: 72)),
               const SizedBox(height: 16),
-              Text(resultText, style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: resultColor)),
+              Text(resultText, textAlign: TextAlign.center, style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: resultColor)),
               const SizedBox(height: 12),
               if (pointsGained > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(20)),
-                  child: Text('+$pointsGained points', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.amber)),
+                  decoration: BoxDecoration(color: GameColors.amber.withOpacity(0.14), borderRadius: BorderRadius.circular(8)),
+                  child: Text('+$pointsGained points', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: GameColors.amber)),
                 ),
               const SizedBox(height: 48),
               // Rematch button states
@@ -109,28 +110,17 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               else if (opponentRequested)
                 const SizedBox() // dialog handles this
               else
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
+                GameButton(
+                    icon: Icons.refresh,
+                    label: 'Rematch',
                     onPressed: () => _requestRematch(room),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Rematch', style: TextStyle(fontSize: 16)),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
                   ),
-                ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
-                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: const Text('Back to Home', style: TextStyle(fontSize: 16)),
-                ),
+              GameButton(
+                icon: Icons.home,
+                label: 'Back to Home',
+                outlined: true,
+                onPressed: () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false),
               ),
             ],
           ),
@@ -182,16 +172,16 @@ class _RematchWaiting extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.deepPurple.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.deepPurple.shade200),
+        color: GameColors.violet.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: GameColors.violet.withOpacity(0.3)),
       ),
       child: const Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
           SizedBox(width: 12),
-          Text('Waiting for opponent...', style: TextStyle(fontSize: 16, color: Colors.deepPurple)),
+          Text('Waiting for opponent...', style: TextStyle(fontSize: 16, color: GameColors.violet, fontWeight: FontWeight.w700)),
         ],
       ),
     );

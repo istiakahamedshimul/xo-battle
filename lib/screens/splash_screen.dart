@@ -5,6 +5,7 @@ import 'login_screen.dart';
 import 'home_screen.dart';
 import 'profile_setup_screen.dart';
 import '../services/auth_service.dart';
+import '../widgets/game_ui.dart';
 
 class SplashScreen extends ConsumerWidget {
   const SplashScreen({super.key});
@@ -14,16 +15,18 @@ class SplashScreen extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
 
     return authState.when(
-      loading: () => const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('XO', style: TextStyle(fontSize: 72, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-              Text('BATTLE', style: TextStyle(fontSize: 24, letterSpacing: 6, color: Colors.deepPurple)),
-              SizedBox(height: 32),
-              CircularProgressIndicator(),
-            ],
+      loading: () => const GameShell(
+        child: Center(
+          child: GamePanel(
+            padding: EdgeInsets.symmetric(horizontal: 28, vertical: 34),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                XoLogo(),
+                SizedBox(height: 28),
+                LinearProgressIndicator(minHeight: 6),
+              ],
+            ),
           ),
         ),
       ),
@@ -34,7 +37,7 @@ class SplashScreen extends ConsumerWidget {
           future: AuthService().hasProfile(user.uid),
           builder: (ctx, snap) {
             if (!snap.hasData) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const GameShell(child: Center(child: CircularProgressIndicator()));
             }
             return snap.data! ? const HomeScreen() : const ProfileSetupScreen();
           },

@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
+import '../widgets/game_ui.dart';
 import 'lobby_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   final String uid;
-  /// Pass the logged-in user's uid when viewing someone else's profile.
   final String? viewerUid;
 
   const ProfileScreen({super.key, required this.uid, this.viewerUid});
 
-  static const _avatarEmojis = {
-    'avatar_1': '🐶', 'avatar_2': '🐱', 'avatar_3': '🦊',
-    'avatar_4': '🐸', 'avatar_5': '🐼', 'avatar_6': '🦁',
+  static const _avatarLabels = {
+    'avatar_1': 'A1',
+    'avatar_2': 'A2',
+    'avatar_3': 'A3',
+    'avatar_4': 'A4',
+    'avatar_5': 'A5',
+    'avatar_6': 'A6',
   };
 
   bool get _isOwnProfile => viewerUid == null || viewerUid == uid;
@@ -21,37 +25,45 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(userProfileProvider(uid));
 
-    return Scaffold(
+    return GameShell(
       appBar: AppBar(title: const Text('Profile')),
-      body: userAsync.when(
+      scrollable: true,
+      child: userAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (user) {
           if (user == null) return const Center(child: Text('User not found'));
           final winRate = (user.winRate * 100).toStringAsFixed(1);
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                const SizedBox(height: 16),
-                CircleAvatar(
-                  radius: 48,
-                  backgroundColor: Colors.deepPurple.shade100,
-                  child: Text(_avatarEmojis[user.avatar] ?? '🐶', style: const TextStyle(fontSize: 48)),
+          return Column(
+            children: [
+              GamePanel(
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 48,
+                      backgroundColor: GameColors.violet.withOpacity(0.14),
+                      child: Text(
+                        _avatarLabels[user.avatar] ?? 'P1',
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: GameColors.violet),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(user.name, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+                    Text('${user.points} points', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.62))),
+                    if (!_isOwnProfile) ...[
+                      const SizedBox(height: 16),
+                      _ActionButtons(viewerUid: viewerUid!, targetUid: uid),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 12),
-                Text(user.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                Text('${user.points} points', style: TextStyle(color: Colors.grey.shade600)),
-                const SizedBox(height: 16),
-                if (!_isOwnProfile) _ActionButtons(viewerUid: viewerUid!, targetUid: uid),
-                const SizedBox(height: 16),
-                _StatsGrid(user: user, winRate: winRate),
-                const SizedBox(height: 24),
-                _StatRow(label: 'Current Streak', value: '${user.currentStreak} 🔥'),
-                _StatRow(label: 'Best Streak', value: '${user.bestStreak} ⚡'),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              _StatsGrid(user: user, winRate: winRate),
+              const SizedBox(height: 16),
+              _StatRow(label: 'Current Streak', value: '${user.currentStreak}'),
+              _StatRow(label: 'Best Streak', value: '${user.bestStreak}'),
+            ],
           );
         },
       ),
@@ -73,49 +85,27 @@ class _ActionButtons extends ConsumerWidget {
     return isFriendAsync.when(
       loading: () => const SizedBox(height: 40, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
       error: (_, __) => const SizedBox(),
-      data: (isFriend) => Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (isFriend)
-            ElevatedButton.icon(
-              onPressed: () => _challenge(context, ref),
-              icon: const Icon(Icons.sports_esports, size: 16),
-              label: const Text('Challenge'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            )
-          else
-            hasPendingAsync.when(
-              loading: () => const SizedBox(),
-              error: (_, __) => const SizedBox(),
-              data: (hasPending) => hasPending
-                  ? OutlinedButton.icon(
-                      onPressed: null,
-                      icon: const Icon(Icons.hourglass_top, size: 16),
-                      label: const Text('Request Sent'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    )
-                  : ElevatedButton.icon(
-                      onPressed: () => _sendRequest(context, ref),
-                      icon: const Icon(Icons.person_add, size: 16),
-                      label: const Text('Add Friend'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-            ),
-        ],
-      ),
+      data: (isFriend) {
+        if (isFriend) {
+          return GameButton(
+            icon: Icons.sports_esports,
+            label: 'Challenge',
+            onPressed: () => _challenge(context, ref),
+          );
+        }
+        return hasPendingAsync.when(
+          loading: () => const SizedBox(),
+          error: (_, __) => const SizedBox(),
+          data: (hasPending) => hasPending
+              ? const GameButton(icon: Icons.hourglass_top, label: 'Request Sent', onPressed: null, outlined: true)
+              : GameButton(
+                  icon: Icons.person_add,
+                  label: 'Add Friend',
+                  color: GameColors.cyan,
+                  onPressed: () => _sendRequest(context, ref),
+                ),
+        );
+      },
     );
   }
 
@@ -128,9 +118,7 @@ class _ActionButtons extends ConsumerWidget {
   }
 
   Future<void> _challenge(BuildContext context, WidgetRef ref) async {
-    final myUid = viewerUid;
-    if (myUid == null) return;
-    final room = await ref.read(roomServiceProvider).challengeFriend(myUid, targetUid);
+    final room = await ref.read(roomServiceProvider).challengeFriend(viewerUid, targetUid);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Challenge sent!')));
       Navigator.push(context, MaterialPageRoute(builder: (_) => LobbyScreen(roomId: room.roomId)));
@@ -154,38 +142,11 @@ class _StatsGrid extends StatelessWidget {
       crossAxisSpacing: 12,
       childAspectRatio: 2,
       children: [
-        _StatCard(label: 'Matches', value: '${user.totalMatches}', color: Colors.blue),
-        _StatCard(label: 'Wins', value: '${user.wins}', color: Colors.green),
-        _StatCard(label: 'Losses', value: '${user.losses}', color: Colors.red),
-        _StatCard(label: 'Win Rate', value: '$winRate%', color: Colors.deepPurple),
+        GameStatTile(label: 'Matches', value: '${user.totalMatches}', color: GameColors.cyan, icon: Icons.grid_3x3),
+        GameStatTile(label: 'Wins', value: '${user.wins}', color: GameColors.green, icon: Icons.emoji_events),
+        GameStatTile(label: 'Losses', value: '${user.losses}', color: GameColors.rose, icon: Icons.close),
+        GameStatTile(label: 'Win Rate', value: '$winRate%', color: GameColors.violet, icon: Icons.trending_up),
       ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatCard({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        ],
-      ),
     );
   }
 }
@@ -199,13 +160,16 @@ class _StatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 16)),
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ],
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: GamePanel(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: GameColors.violet)),
+          ],
+        ),
       ),
     );
   }

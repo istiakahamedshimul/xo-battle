@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/providers.dart';
 import '../models/chat_message.dart';
 import '../services/bot_service.dart';
+import '../widgets/game_ui.dart';
 import 'result_screen.dart';
 import 'home_screen.dart';
 
@@ -101,7 +102,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         final isMyTurn = room.currentTurn == uid;
         final opponentId = uid == room.playerX ? room.playerO : room.playerX;
 
-        return Scaffold(
+        return GameShell(
           appBar: AppBar(
             title: const Text('XO Battle'),
             actions: [
@@ -111,17 +112,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               ),
             ],
           ),
-          body: Stack(
+          padding: EdgeInsets.zero,
+          child: Stack(
             children: [
               // Main game column
               Column(
                 children: [
                   _ScoreBar(uid: uid, opponentId: opponentId, isMyTurn: isMyTurn, mySymbol: mySymbol, timeLeft: timeLeft),
-                  const Divider(height: 1),
                   Expanded(
                     child: Center(
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(18),
                         child: AspectRatio(
                           aspectRatio: 1,
                           child: _Board(
@@ -222,8 +223,11 @@ class _ChatBarState extends ConsumerState<_ChatBar> {
     });
 
     return Container(
-      color: Colors.grey.shade100,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.92),
+        border: Border(top: BorderSide(color: GameColors.violet.withOpacity(0.15))),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -232,7 +236,7 @@ class _ChatBarState extends ConsumerState<_ChatBar> {
             child: ActionChip(
               label: Text(p, style: const TextStyle(fontSize: 16)),
               onPressed: () => _send(p),
-              backgroundColor: Colors.deepPurple.shade50,
+              backgroundColor: GameColors.violet.withOpacity(0.10),
             ),
           )).toList(),
         ),
@@ -298,7 +302,7 @@ class _FloatingBubbleState extends State<_FloatingBubble> with SingleTickerProvi
   @override
   Widget build(BuildContext context) {
     final isMe = widget.msg.message.senderId == widget.myUid;
-    final color = isMe ? Colors.deepPurple : Colors.teal;
+    final color = isMe ? GameColors.violet : GameColors.cyan;
 
     return FadeTransition(
       opacity: _opacity,
@@ -343,41 +347,43 @@ class _Board extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
-      itemCount: 9,
-      itemBuilder: (_, i) {
-        final cell = board[i];
-        return GestureDetector(
-          onTap: cell.isEmpty && onTap != null ? () => onTap!(i) : null,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              color: cell.isEmpty
-                  ? Colors.grey.shade100
-                  : (cell == 'X' ? Colors.deepPurple.shade50 : Colors.teal.shade50),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade300, width: 2),
-            ),
-            child: Center(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: Text(
-                  cell,
-                  key: ValueKey(cell + i.toString()),
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: cell == 'X' ? Colors.deepPurple : Colors.teal,
+    return GamePanel(
+      padding: const EdgeInsets.all(10),
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10),
+        itemCount: 9,
+        itemBuilder: (_, i) {
+          final cell = board[i];
+          final color = cell == 'X' ? GameColors.violet : GameColors.cyan;
+          return GestureDetector(
+            onTap: cell.isEmpty && onTap != null ? () => onTap!(i) : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                color: cell.isEmpty ? Theme.of(context).colorScheme.surface : color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: cell.isEmpty ? Colors.black12 : color.withOpacity(0.45), width: 2),
+              ),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: Text(
+                    cell,
+                    key: ValueKey(cell + i.toString()),
+                    style: TextStyle(
+                      fontSize: 54,
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -398,8 +404,8 @@ class _ScoreBar extends ConsumerWidget {
     final me = ref.watch(userProfileProvider(uid));
     final opp = ref.watch(userProfileProvider(opponentId));
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return GamePanel(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
           _PlayerChip(userAsync: me, symbol: mySymbol, active: isMyTurn),
@@ -410,7 +416,7 @@ class _ScoreBar extends ConsumerWidget {
                   style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: timeLeft <= 5 ? Colors.red : Colors.black)),
+                      color: timeLeft <= 5 ? GameColors.rose : GameColors.violet)),
               Text(isMyTurn ? 'Your turn' : 'Wait...',
                   style: TextStyle(fontSize: 12, color: isMyTurn ? Colors.green : Colors.grey)),
             ],
@@ -431,13 +437,13 @@ class _PlayerChip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final color = symbol == 'X' ? Colors.deepPurple : Colors.teal;
+    final color = symbol == 'X' ? GameColors.violet : GameColors.cyan;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: active ? color.withOpacity(0.1) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: active ? color : Colors.transparent, width: 2),
       ),
       child: Column(

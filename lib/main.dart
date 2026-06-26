@@ -7,6 +7,7 @@ import 'providers/providers.dart';
 import 'screens/splash_screen.dart';
 import 'services/bot_service.dart';
 import 'widgets/challenge_listener.dart';
+import 'widgets/game_ui.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,14 +28,28 @@ class XOBattleApp extends ConsumerWidget {
       title: 'XO Battle',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: Colors.deepPurple,
+        colorSchemeSeed: GameColors.violet,
         brightness: Brightness.light,
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF8FBFF),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          foregroundColor: GameColors.ink,
+          titleTextStyle: TextStyle(color: GameColors.ink, fontSize: 20, fontWeight: FontWeight.w900),
+        ),
       ),
       darkTheme: ThemeData(
-        colorSchemeSeed: Colors.deepPurple,
+        colorSchemeSeed: GameColors.violet,
         brightness: Brightness.dark,
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+        ),
       ),
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       builder: (context, child) => ChallengeListener(child: child ?? const SizedBox()),

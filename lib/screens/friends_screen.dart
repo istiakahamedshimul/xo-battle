@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/providers.dart';
+import '../widgets/game_ui.dart';
 import 'lobby_screen.dart';
 import 'profile_screen.dart';
 
@@ -78,7 +79,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
     final requestsAsync = ref.watch(incomingRequestsProvider(widget.uid));
     final friendsAsync = ref.watch(friendsProvider(widget.uid));
 
-    return Scaffold(
+    return GameShell(
       appBar: AppBar(
         title: const Text('Friends'),
         bottom: TabBar(
@@ -92,7 +93,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
           ],
         ),
       ),
-      body: TabBarView(
+      child: TabBarView(
         controller: _tabs,
         children: [
           // ── Friends / Search tab ───────────────────────

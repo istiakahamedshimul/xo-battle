@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/providers.dart';
+import '../widgets/game_ui.dart';
 import 'game_screen.dart';
 import 'home_screen.dart';
 
@@ -34,7 +35,7 @@ class LobbyScreen extends ConsumerWidget {
         final isChallengePending = room.isChallenge && !room.challengeAccepted;
         final canStart = isHost && hasGuest && !isChallengePending && room.isWaiting;
 
-        return Scaffold(
+        return GameShell(
           appBar: AppBar(
             title: const Text('Lobby'),
             actions: [
@@ -44,14 +45,18 @@ class LobbyScreen extends ConsumerWidget {
               ),
             ],
           ),
-          body: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
+          child: Column(
               children: [
-                const SizedBox(height: 16),
-                Text('Room Code', style: TextStyle(color: Colors.grey.shade600)),
-                Text(room.roomCode, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 6, color: Colors.deepPurple)),
-                const SizedBox(height: 40),
+                GamePanel(
+                  child: Column(
+                    children: [
+                      const SectionLabel('Room Code'),
+                      const SizedBox(height: 8),
+                      Text(room.roomCode, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 6, color: GameColors.violet)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
                 _PlayerTile(uid: room.playerX, label: 'Player X (Host)', symbol: 'X'),
                 const SizedBox(height: 16),
                 hasGuest
@@ -70,7 +75,7 @@ class LobbyScreen extends ConsumerWidget {
                 if (isChallengePending)
                   Text(
                     isHost ? 'Waiting for friend to accept...' : 'Challenge pending...',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                 if (room.isFinished)
                   Text(
@@ -78,23 +83,14 @@ class LobbyScreen extends ConsumerWidget {
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 if (canStart)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => _startGame(context, ref, roomId),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.deepPurple,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Start Game', style: TextStyle(fontSize: 18)),
-                    ),
+                  GameButton(
+                    icon: Icons.play_arrow,
+                    label: 'Start Game',
+                    onPressed: () => _startGame(context, ref, roomId),
                   ),
                 const SizedBox(height: 24),
               ],
             ),
-          ),
         );
       },
     );
@@ -121,17 +117,13 @@ class _PlayerTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(userProfileProvider(uid));
-    return Container(
+    return GamePanel(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: symbol == 'X' ? Colors.deepPurple.shade50 : Colors.teal.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: symbol == 'X' ? Colors.deepPurple : Colors.teal),
-      ),
+      color: (symbol == 'X' ? GameColors.violet : GameColors.cyan).withOpacity(0.10),
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: symbol == 'X' ? Colors.deepPurple : Colors.teal,
+            backgroundColor: symbol == 'X' ? GameColors.violet : GameColors.cyan,
             child: Text(symbol, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(width: 12),
@@ -157,14 +149,9 @@ class _WaitingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey),
-      ),
-      child: const Row(
+    return const GamePanel(
+      padding: EdgeInsets.all(16),
+      child: Row(
         children: [
           CircleAvatar(backgroundColor: Colors.grey, child: Text('O', style: TextStyle(color: Colors.white))),
           SizedBox(width: 12),
